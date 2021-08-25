@@ -72,3 +72,7 @@ if (MPI4PY_FOUND)
   target_include_directories(cpp PRIVATE ${MPI4PY_INCLUDE_DIR})
   target_compile_definitions(cpp PRIVATE HAS_PYBIND11_MPI4PY)
 endif()
+
+# install(TARGETS _cpp DESTINATION .)
+# install(TARGETS _cpp LIBRARY DESTINATION src)
+install(TARGETS cpp LIBRARY DESTINATION dolfinx)

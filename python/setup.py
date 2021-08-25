@@ -1,5 +1,7 @@
 import sys
 
+# from setuptools import setup
+
 try:
     from skbuild import setup
 except ImportError:
@@ -11,7 +13,7 @@ except ImportError:
     raise
 
 
-from setuptools import find_packages
+# from setuptools import find_packages
 
 
 setup(
