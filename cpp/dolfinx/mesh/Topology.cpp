@@ -34,7 +34,8 @@ namespace
 /// @return a map to sharing processes for each index, with the (random)
 /// owner as the first in the list
 std::unordered_map<std::int64_t, std::vector<int>>
-compute_index_sharing(MPI_Comm comm, std::vector<std::int64_t>& unknown_idx)
+determine_sharing_ranks(MPI_Comm comm,
+                        const std::vector<std::int64_t>& unknown_idx)
 {
   const int mpi_size = dolfinx::MPI::size(comm);
 
@@ -152,13 +153,13 @@ create_sets(const graph::AdjacencyList<std::int64_t>& cells,
 
   // Compute the intersection of local cell vertices and ghost cell
   // vertices
-  std::vector<std::int64_t> unknown_indices_set;
-  std::unordered_map<std::int64_t, std::int32_t> global_to_local_vertices;
 
   // Any vertices which are in ghost cells set to -1
+  std::unordered_map<std::int64_t, std::int32_t> global_to_local_vertices;
   for (std::int64_t idx : ghost_vertex_set)
     global_to_local_vertices.insert({idx, -1});
 
+  std::vector<std::int64_t> unknown_indices_set;
   for (std::int64_t global_index : local_vertex_set)
   {
     // Check if already in a ghost cell
@@ -240,7 +241,8 @@ send_vertex_numbering(const MPI_Comm& neighbor_comm,
   {
     // Get ranks that share this vertex
     const std::vector<int>& sharing_ranks = vertex.second;
-    if (sharing_ranks[0] == mpi_rank)
+    if (sharing_ranks[0]
+        == mpi_rank) // FIXME: this isn't clear. What's the precondition?
     {
       const auto it = global_to_local_vertices.find(vertex.first);
       assert(it != global_to_local_vertices.end());
@@ -591,18 +593,16 @@ mesh::create_topology(MPI_Comm comm,
         cell_ghost_indices, ghost_owners);
   }
 
-  // Start creating a global-to-local map, labelling local unshared vertices
-  // with -2, and other vertices (ghost or unknown owner) with -1. Return list
-  // of vertices whose ownership still needs determining.
-  std::unordered_map<std::int64_t, std::int32_t> global_to_local_vertices;
-  std::vector<std::int64_t> unknown_indices_set;
-  std::tie(global_to_local_vertices, unknown_indices_set)
+  // Creating a global-to-local map, labelling local unshared vertices
+  // with -2, and other vertices (ghost or unknown owner) with -1.
+  // Return list of vertices whose ownership still needs determining.
+  auto [global_to_local_vertices, unknown_indices_set]
       = create_sets(cells, num_local_cells);
 
   // For each vertex whose ownership needs determining, compute list of
-  // sharing process ranks
+  // sharing ranks
   std::unordered_map<std::int64_t, std::vector<int>> global_vertex_to_ranks
-      = compute_index_sharing(comm, unknown_indices_set);
+      = determine_sharing_ranks(comm, unknown_indices_set);
 
   // Take ownership of vertices based on global_vertex_to_ranks
   for (std::int64_t global_index : unknown_indices_set)
@@ -643,13 +643,13 @@ mesh::create_topology(MPI_Comm comm,
              dolfinx::MPI::mpi_type<std::int64_t>(), MPI_SUM, comm);
 
   // Communicate new global vertex index to neighbors
-  auto [neighbor_comm, proc_to_neighbors]
+  auto [neighbor_comm, global_to_neighbor_rank]
       = compute_neighbor_comm(comm, mpi_rank, global_vertex_to_ranks);
 
   // Receive list of triplets mapping (input vertex index) -> (new global index,
   // owner)
   auto recv_triplets = send_vertex_numbering(
-      neighbor_comm, proc_to_neighbors, mpi_rank, global_vertex_to_ranks,
+      neighbor_comm, global_to_neighbor_rank, mpi_rank, global_vertex_to_ranks,
       global_offset_v, global_to_local_vertices);
   assert(recv_triplets.size() % 3 == 0);
 
@@ -673,8 +673,8 @@ mesh::create_topology(MPI_Comm comm,
     // boundary from the ghost cell owner. Note: the ghost cell owner
     // might not be the same as the vertex owner.
     const std::vector<std::int64_t> recv_triplets = send_ghost_vertex_numbering(
-        neighbor_comm, mpi_rank, proc_to_neighbors, index_map_c, cells, nlocal,
-        global_offset_v, global_to_local_vertices, ghost_vertices,
+        neighbor_comm, mpi_rank, global_to_neighbor_rank, index_map_c, cells,
+        nlocal, global_offset_v, global_to_local_vertices, ghost_vertices,
         ghost_vertex_owners);
 
     // Unpack received data and add to ghosts
