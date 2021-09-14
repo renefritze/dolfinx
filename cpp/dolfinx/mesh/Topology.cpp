@@ -116,15 +116,15 @@ compute_index_sharing(MPI_Comm comm, std::vector<std::int64_t>& unknown_idx)
   return index_to_owner;
 }
 //-----------------------------------------------------------------------------
-// Start to create a map from the 64-bit input vertex index to a local index.
-// Finds the set of vertices which are in ghost cells, and maps them to -1.
-// Vertices which only appear in local cells are mapped to -2. They will be
-// receive local indexing later. Vertex indices which are both in local cells,
-// and in ghost cells (ownership yet unknown) are returned as a vector.
+// Start to create a map from the 64-bit input vertex index to a local
+// index. Finds the set of vertices which are in ghost cells, and maps
+// them to -1. Vertices which only appear in local cells are mapped to
+// -2. They will be receive local indexing later. Vertex indices which
+// are both in local cells, and in ghost cells (ownership yet unknown)
+// are returned as a vector.
 // @param cells Input mesh topology
 // @param num_local_cells Number of local (non-ghost) cells
-// @return std::pair{global_to_local_map, unknown_indices}
-//
+// @return (global_to_local_map, unknown_indices)
 std::pair<std::unordered_map<std::int64_t, std::int32_t>,
           std::vector<std::int64_t>>
 create_sets(const graph::AdjacencyList<std::int64_t>& cells,
@@ -153,7 +153,6 @@ create_sets(const graph::AdjacencyList<std::int64_t>& cells,
   // Compute the intersection of local cell vertices and ghost cell
   // vertices
   std::vector<std::int64_t> unknown_indices_set;
-
   std::unordered_map<std::int64_t, std::int32_t> global_to_local_vertices;
 
   // Any vertices which are in ghost cells set to -1
@@ -163,9 +162,11 @@ create_sets(const graph::AdjacencyList<std::int64_t>& cells,
   for (std::int64_t global_index : local_vertex_set)
   {
     // Check if already in a ghost cell
-    const auto it = global_to_local_vertices.find(global_index);
-    if (it != global_to_local_vertices.end())
+    if (const auto it = global_to_local_vertices.find(global_index);
+        it != global_to_local_vertices.end())
+    {
       unknown_indices_set.push_back(global_index);
+    }
     else
     {
       // This vertex is not shared: set to -2
@@ -178,28 +179,32 @@ create_sets(const graph::AdjacencyList<std::int64_t>& cells,
   return {std::move(global_to_local_vertices), std::move(unknown_indices_set)};
 }
 //-----------------------------------------------------------------------------
-// Compute a neighborhood comm from the values in global_vertex_to_ranks,
-// also returning the map from process number to neighbor number
-// Input params as in mesh::create_topology()
-// @return std::pair{neighbor_comm, proc_to_neighbor}
+// Compute a neighborhood comm from the values in
+// global_vertex_to_ranks, also returning the map from process number to
+// neighbor number Input params as in mesh::create_topology()
+// @return (neighbor comm, global rank to neighborhood rank)
 std::pair<MPI_Comm, std::map<int, int>>
 compute_neighbor_comm(const MPI_Comm& comm, int mpi_rank,
                       const std::unordered_map<std::int64_t, std::vector<int>>&
                           global_vertex_to_ranks)
 {
-  // Create set of all ranks that share a vertex with this rank.
-  // Note this can be wider than the neighbor comm of shared cells.
-  std::set<int> vertex_neighbor_ranks;
-  for (const auto& q : global_vertex_to_ranks)
-    vertex_neighbor_ranks.insert(q.second.begin(), q.second.end());
-  vertex_neighbor_ranks.erase(mpi_rank); // Remove my rank
+  // Create set of all ranks that share a vertex with this rank. Note
+  // this can be 'wider' than the neighbor comm of shared cells.
+  std::vector<int> neighbors;
+  std::for_each(
+      global_vertex_to_ranks.begin(), global_vertex_to_ranks.end(),
+      [&neighbors](auto& q)
+      { neighbors.insert(neighbors.end(), q.second.begin(), q.second.end()); });
+  std::sort(neighbors.begin(), neighbors.end());
+  neighbors.erase(std::unique(neighbors.begin(), neighbors.end()),
+                  neighbors.end());
+  auto it = std::find(neighbors.begin(), neighbors.end(), mpi_rank);
+  neighbors.erase(it); // Remove my rank
 
   // Build map from neighbor global rank to neighbor local rank
-  std::vector<int> neighbors(vertex_neighbor_ranks.begin(),
-                             vertex_neighbor_ranks.end());
-  std::map<int, int> proc_to_neighbors;
+  std::map<int, int> rank_global_to_neighborhood;
   for (std::size_t i = 0; i < neighbors.size(); ++i)
-    proc_to_neighbors.insert({neighbors[i], i});
+    rank_global_to_neighborhood.insert({neighbors[i], i});
 
   // Create neighborhood communicator
   MPI_Comm neighbor_comm;
@@ -208,19 +213,20 @@ compute_neighbor_comm(const MPI_Comm& comm, int mpi_rank,
                                  neighbors.data(), MPI_UNWEIGHTED,
                                  MPI_INFO_NULL, false, &neighbor_comm);
 
-  return {neighbor_comm, proc_to_neighbors};
+  return {neighbor_comm, std::move(rank_global_to_neighborhood)};
 }
 //-------------------------------------------------------------------------------
-// Send the vertex numbering for owned vertices, to
-// processes that also share them, returning a list of triplets received from
-// other processes. Each triplet consists of {old_global_vertex_index,
-// new_global_vertex_index, owning_rank}. The received vertices will be "ghost"
-// on this process.
+// Send the vertex number for owned vertices to ranks that also share
+// them, and return a list of triplets received from other ranks. Each
+// triplet consists of {old_global_vertex_index,
+// new_global_vertex_index, owning_rank}. The received vertices will be
+// "ghost" on this process.
 // Input params as in mesh::create_topology()
 // @return list of triplets
 std::vector<std::int64_t>
 send_vertex_numbering(const MPI_Comm& neighbor_comm,
-                      const std::map<int, int>& proc_to_neighbors, int mpi_rank,
+                      const std::map<int, int>& global_to_neighbor_rank,
+                      int mpi_rank,
                       const std::unordered_map<std::int64_t, std::vector<int>>&
                           global_vertex_to_ranks,
                       std::int64_t global_offset_v,
@@ -229,26 +235,27 @@ send_vertex_numbering(const MPI_Comm& neighbor_comm,
 {
   // Pack send data
   std::vector<std::vector<std::int64_t>> send_triplets(
-      proc_to_neighbors.size());
-  for (const auto& q : global_vertex_to_ranks)
+      global_to_neighbor_rank.size());
+  for (auto& vertex : global_vertex_to_ranks)
   {
-    const std::vector<int>& procs = q.second;
-    if (procs[0] == mpi_rank)
+    // Get ranks that share this vertex
+    const std::vector<int>& sharing_ranks = vertex.second;
+    if (sharing_ranks[0] == mpi_rank)
     {
-      const auto it = global_to_local_vertices.find(q.first);
+      const auto it = global_to_local_vertices.find(vertex.first);
       assert(it != global_to_local_vertices.end());
       assert(it->second != -1);
 
       // Owned and shared with these processes
       // Note: starting from 1, 0 is self
-      for (std::size_t j = 1; j < procs.size(); ++j)
+      for (std::size_t j = 1; j < sharing_ranks.size(); ++j)
       {
-        auto np_it = proc_to_neighbors.find(procs[j]);
-        assert(np_it != proc_to_neighbors.end());
-        const int np = np_it->second;
-        send_triplets[np].push_back(it->first);
-        send_triplets[np].push_back(it->second + global_offset_v);
-        send_triplets[np].push_back(mpi_rank);
+        auto ranks = global_to_neighbor_rank.find(sharing_ranks[j]);
+        assert(ranks != global_to_neighbor_rank.end());
+        const int neigh_rank = ranks->second;
+        send_triplets[neigh_rank].push_back(it->first);
+        send_triplets[neigh_rank].push_back(it->second + global_offset_v);
+        send_triplets[neigh_rank].push_back(mpi_rank);
       }
     }
   }
@@ -258,11 +265,11 @@ send_vertex_numbering(const MPI_Comm& neighbor_comm,
       .array();
 }
 //---------------------------------------------------------------------
-// Send vertex numbering of vertices in ghost cells to neighbours. These include
-// vertices that were numbered remotely and received in a previous round. This
-// is only needed for meshes with shared cells, i.e. ghost_mode=shared_facet.
-// Returns a list of triplets, {old_global_vertex_index,
-// new_global_vertex_index, owner}.
+// Send vertex numbering of vertices in ghost cells to neighbours. These
+// include vertices that were numbered remotely and received in a
+// previous round. This is only needed for meshes with shared cells,
+// i.e. ghost_mode=shared_facet. Returns a list of triplets,
+// {old_global_vertex_index, new_global_vertex_index, owner}.
 // Input params as in mesh::create_topology()
 // @return list of triplets
 std::vector<std::int64_t> send_ghost_vertex_numbering(
