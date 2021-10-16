@@ -34,7 +34,8 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: ./spack
-          repository: spack/spack
+          ref: ffcx-setuptools-version
+          repository: garth-wells/spack
 
       - name: Build DOLFINx (C++) development version
         run: |
