@@ -20,11 +20,10 @@ jobs:
           path: ./spack
           ref: develop
           repository: spack/spack
-      - name: Upload Spack
-        uses: actions/upload-artifact@v2
+      - uses: actions/cache@v2
         with:
-          name: spack
-          path: ./spack
+          path: spack
+          key: spack-files
   buildcpp:
     # strategy:
     #   matrix:
@@ -32,8 +31,8 @@ jobs:
     #     os: [ubuntu-20.04]
     #   fail-fast: false
     # runs-on: ${{ matrix.os }}
-    runs-on: ubuntu-20.04
     needs: getspack
+    runs-on: ubuntu-20.04
 
     # env:
     #   DOLFINX_RELEASE_TAG: v0.3.0
@@ -46,10 +45,10 @@ jobs:
     #   OMPI_MCA_hwloc_base_binding_policy: none
 
     steps:
-      - name: Upload Spack
-        uses: actions/download-artifact@v2
+      - uses: actions/cache@v2
         with:
-          name: spack
+          path: spack
+          key: spack-files
       - run: ls
       - run: pwd
       - name: Build DOLFINx (C++) development version
