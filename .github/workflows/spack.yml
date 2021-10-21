@@ -18,8 +18,8 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: ./spack
-          ref: ffcx-setuptools-version
-          repository: garth-wells/spack
+          ref: main
+          repository: spack/spack
 
   buildcpp:
     # strategy:
