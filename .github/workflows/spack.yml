@@ -24,7 +24,8 @@ jobs:
           path: ./spack
           ref: develop
           repository: spack/spack
-
+      - run: ls
+      - run: pwd
 
   buildcpp:
     # strategy:
@@ -51,6 +52,8 @@ jobs:
         with:
           path: ./*
           key: ${{ github.sha }}
+      - run: ls
+      - run: pwd
       - name: Build DOLFINx (C++) development version
         run: |
           . ~/spack/share/spack/setup-env.sh
