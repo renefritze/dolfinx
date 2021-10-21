@@ -11,15 +11,27 @@ on:
   workflow_dispatch: ~
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        # os: [ubuntu-20.04, macos-10.15]
-        os: [ubuntu-20.04]
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
+  getspack:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Get Spack
+        uses: actions/checkout@v2
+        with:
+          path: ./spack
+          ref: ffcx-setuptools-version
+          repository: garth-wells/spack
+
+  buildcpp:
+    # strategy:
+    #   matrix:
+    #     # os: [ubuntu-20.04, macos-10.15]
+    #     os: [ubuntu-20.04]
+    #   fail-fast: false
+    # runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
 
     env:
+      DOLFINX_RELEASE_TAG: v0.3.0
       MPLBACKEND: agg
       OPENBLAS_NUM_THREADS: 1
       OMPI_MCA_rmaps_base_oversubscribe: 1
@@ -29,13 +41,12 @@ jobs:
       OMPI_MCA_hwloc_base_binding_policy: none
 
     steps:
-
-      - name: Get Spack
-        uses: actions/checkout@v2
-        with:
-          path: ./spack
-          ref: ffcx-setuptools-version
-          repository: garth-wells/spack
+    #   - name: Get Spack
+    #     uses: actions/checkout@v2
+    #     with:
+    #       path: ./spack
+    #       ref: ffcx-setuptools-version
+    #       repository: garth-wells/spack
 
       - name: Build DOLFINx (C++) development version
         run: |
@@ -53,10 +64,20 @@ jobs:
           spack add fenics-dolfinx
           spack install
 
-      - name: Get DOLFINx code (to access test files)
+  testcpp:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Get DOLFINx code to access test files (main)
         uses: actions/checkout@v2
         with:
-          path: ./dolfinx-test
+          ref: main
+          path: ./dolfinx-main-test
+
+      # - name: Get DOLFINx code to access test files (main)
+      #   uses: actions/checkout@v2
+      #   with:
+      #     ref: ${{ env.DOLFINX_RELEASE_TAG }}
+      #     path: ./dolfinx-release-test
 
       - name: Create demo CMake files
         run: |
@@ -92,6 +113,9 @@ jobs:
       #     make -j2
       #     mpirun -np 2 ./demo_poisson
 
+  buildpython:
+    runs-on: ubuntu-20.04
+    steps:
       - name: Build DOLFINx (Python, development) via Spack
         run: |
           . ./spack/share/spack/setup-env.sh
@@ -108,6 +132,9 @@ jobs:
       #     spack add py-fenics-dolfinx
       #     spack install
 
+  testpython:
+    runs-on: ubuntu-20.04
+    steps:
       # NOTE: numba is installed via pip because the spack package takes
       # an extremely long time to compile
       - name: Run DOLFINx (Python, main) tests
