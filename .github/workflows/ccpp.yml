@@ -21,6 +21,7 @@ jobs:
           python-version: 3.9
       - name: Flake8 checks
         run: |
+          pip install flake8
           cd python/
           flake8 dolfinx
           flake8 dolfinx_utils
