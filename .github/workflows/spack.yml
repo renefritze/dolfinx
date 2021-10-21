@@ -53,7 +53,7 @@ jobs:
       - run: pwd
       - name: Build DOLFINx (C++) development version
         run: |
-          . ~/spack/share/spack/setup-env.sh
+          . ./spack/share/spack/setup-env.sh
           spack env create cpp-main
           spack env activate cpp-main
           spack add fenics-dolfinx@main
@@ -61,7 +61,7 @@ jobs:
 
       - name: Build DOLFINx (C++) release version
         run: |
-          . ~/spack/share/spack/setup-env.sh
+          . ./spack/share/spack/setup-env.sh
           spack env create cpp-release
           spack env activate cpp-release
           spack add fenics-dolfinx
@@ -73,8 +73,8 @@ jobs:
     steps:
       - uses: actions/cache@v2
         with:
-          path: ./*
-          key: ${{ github.sha }}
+          path: spack
+          key: spack-files
       - name: Get DOLFINx code to access test files (main)
         uses: actions/checkout@v2
         with:
