@@ -14,6 +14,9 @@ jobs:
   getspack:
     runs-on: ubuntu-20.04
     steps:
+      - uses: actions/cache@v2
+        with:
+          path: ~/spack
       - name: Get Spack
         uses: actions/checkout@v2
         with:
@@ -21,10 +24,6 @@ jobs:
           ref: develop
           repository: spack/spack
 
-      - name: Cache Spack
-        uses: actions/cache@v2
-        with:
-          path: ~/spack
 
   buildcpp:
     # strategy:
@@ -47,6 +46,9 @@ jobs:
     #   OMPI_MCA_hwloc_base_binding_policy: none
 
     steps:
+      - uses: actions/cache@v2
+        with:
+          path: ~/spack
       - name: Build DOLFINx (C++) development version
         run: |
           . ./spack/share/spack/setup-env.sh
@@ -67,6 +69,9 @@ jobs:
     runs-on: ubuntu-20.04
     needs: buildcpp
     steps:
+      - uses: actions/cache@v2
+        with:
+          path: ~/spack
       - name: Get DOLFINx code to access test files (main)
         uses: actions/checkout@v2
         with:
@@ -117,6 +122,9 @@ jobs:
     runs-on: ubuntu-20.04
     needs: buildcpp
     steps:
+      - uses: actions/cache@v2
+        with:
+          path: ~/spack
       - name: Build DOLFINx (Python, development) via Spack
         run: |
           . ./spack/share/spack/setup-env.sh
