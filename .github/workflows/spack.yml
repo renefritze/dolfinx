@@ -16,8 +16,8 @@ jobs:
     steps:
       - uses: actions/cache@v2
         with:
-          path: ~/spack
-          key: ${{ runner.os }}
+          path: ./*
+          key: ${{ github.sha }}
       - name: Get Spack
         uses: actions/checkout@v2
         with:
@@ -49,9 +49,8 @@ jobs:
     steps:
       - uses: actions/cache@v2
         with:
-          path: ~/spack
-          key: ${{ runner.os }}
-
+          path: ./*
+          key: ${{ github.sha }}
       - name: Build DOLFINx (C++) development version
         run: |
           . ~/spack/share/spack/setup-env.sh
@@ -74,8 +73,8 @@ jobs:
     steps:
       - uses: actions/cache@v2
         with:
-          path: ~/spack
-          key: ${{ runner.os }}
+          path: ./*
+          key: ${{ github.sha }}
       - name: Get DOLFINx code to access test files (main)
         uses: actions/checkout@v2
         with:
@@ -128,8 +127,8 @@ jobs:
     steps:
       - uses: actions/cache@v2
         with:
-          path: ~/spack
-          key: ${{ runner.os }}
+          path: ./*
+          key: ${{ github.sha }}
       - name: Build DOLFINx (Python, development) via Spack
         run: |
           . ./spack/share/spack/setup-env.sh
